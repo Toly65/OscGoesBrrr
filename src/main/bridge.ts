@@ -4,7 +4,13 @@ import OscConnection from "./OscConnection";
 import GameDevice from "./GameDevice";
 import {DeviceFeature} from "./Intiface";
 import ConfigService from "./services/ConfigService";
-import {getDefaultLinearActuatorConfig, getDefaultOutput, Output, OutputLinkMutator} from "../common/configTypes";
+import {
+    getDefaultLinearActuatorConfig,
+    getDefaultOutput,
+    Output,
+    OutputLinkAbsoluteDepthMutator,
+    OutputLinkMutator,
+} from "../common/configTypes";
 import clamp from "../common/clamp";
 import {Service} from "typedi";
 
@@ -109,6 +115,32 @@ interface LinkOutput {
     backward: boolean;
 }
 
+function getAbsoluteDepthMutator(mutators: OutputLinkMutator[]) {
+    return mutators.find(
+        (mutator): mutator is OutputLinkAbsoluteDepthMutator => mutator.kind === 'absoluteDepth',
+    );
+}
+
+/**
+ * Converts a "fraction of the penetrator inserted" level into "inserted depth relative to the
+ * depth which should give full intensity". This is what makes a long penetrator feel the same
+ * as a short one: without it, the level is a fraction of the penetrator's own length, so larger
+ * penetrators need proportionally more movement to reach the same intensity.
+ *
+ * Applying this before the other mutators also means the motion-based mutator measures real
+ * speed (in units of fullPowerDepthMeters per second) rather than speed as a fraction of the
+ * penetrator's length.
+ */
+function toAbsoluteDepth(
+    level: number,
+    lengthMeters: number | undefined,
+    mutator: OutputLinkAbsoluteDepthMutator,
+): number {
+    const length = lengthMeters ?? mutator.assumedLengthMeters;
+    if (!(length > 0) || !(mutator.fullPowerDepthMeters > 0)) return level;
+    return level * length / mutator.fullPowerDepthMeters;
+}
+
 export class BridgeOutput {
     private lastLinkValues: number[] = [];
     private lastSourceValues = new Map<string, number>();
@@ -139,6 +171,8 @@ export class BridgeOutput {
         velocity: number,
         mutators: OutputLinkMutator[],
     ): LinkOutput {
+        // Note: 'absoluteDepth' is deliberately not handled here. It converts the source value
+        // itself (see getLinkOutputs), before the velocity used below is measured.
         let backward = false;
         if (this.bioFeature.type !== 'linear' && mutators.some(mutator => mutator.kind === 'motionBased')) {
             value = Math.abs(velocity) / 5;
@@ -201,9 +235,13 @@ export class BridgeOutput {
             }
             let best: LinkOutput = {output: 0, backward: false};
             if (link.kind === 'vrchat.sps.plug' || link.kind === 'vrchat.sps.socket' || link.kind === 'vrchat.sps.touch') {
+                const absoluteDepth = getAbsoluteDepthMutator(link.mutators);
                 for (const gameDevice of gameDevices) {
                     for (const source of gameDevice.getSources(link)) {
-                        const candidate = applyMutators(`${linkId}/${source.id}`, source.level, link.mutators);
+                        const level = absoluteDepth && source.penetration
+                            ? toAbsoluteDepth(source.level, source.penetration.lengthMeters, absoluteDepth)
+                            : source.level;
+                        const candidate = applyMutators(`${linkId}/${source.id}`, level, link.mutators);
                         if (candidate.output > best.output) {
                             best = candidate;
                         }
