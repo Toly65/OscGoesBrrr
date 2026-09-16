@@ -122,11 +122,21 @@ export interface OutputLinkMotionBasedMutator {
     kind: 'motionBased';
 }
 
+/** Avatar parameter holding the player's current eye height in meters (a VRChat built-in). */
+export const DEFAULT_BODY_SCALE_PARAMETER = 'EyeHeightAsMeters';
+
+/** Eye height assumed when the size parameter isn't being received, so we degrade to an average player. */
+export const FALLBACK_EYE_HEIGHT_METERS = 1.6;
+
 export interface OutputLinkAbsoluteDepthMutator {
     kind: 'absoluteDepth';
 
-    /** The insertion depth at which this link reaches full intensity, in meters. */
-    fullPowerDepthMeters: number;
+    /**
+     * Insertion depth which gives this link full intensity, as a fraction of the player's eye
+     * height (0.06 = 6%, which is about 10cm for someone 1.6m tall). Because it's relative to the
+     * player, it follows them when they change size and needs no calibration per avatar.
+     */
+    fullPowerDepthFraction: number;
 
     /**
      * The penetrator length to assume when the real length can't be detected, in meters.
@@ -134,13 +144,20 @@ export interface OutputLinkAbsoluteDepthMutator {
      * sources which never carry length data (such as plug-side links).
      */
     assumedLengthMeters: number;
+
+    /**
+     * Float avatar parameter holding the player's current eye height in meters, usually
+     * EyeHeightAsMeters. Empty means the fallback eye height is used.
+     */
+    bodyScaleParameter?: string;
 }
 
 export function getDefaultAbsoluteDepthMutator(): OutputLinkAbsoluteDepthMutator {
     return {
         kind: 'absoluteDepth',
-        fullPowerDepthMeters: 0.1,
+        fullPowerDepthFraction: 0.06,
         assumedLengthMeters: 0.15,
+        bodyScaleParameter: DEFAULT_BODY_SCALE_PARAMETER,
     };
 }
 

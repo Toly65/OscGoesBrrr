@@ -13,6 +13,8 @@ import {
     Typography,
 } from '@mui/material';
 import {
+    DEFAULT_BODY_SCALE_PARAMETER,
+    FALLBACK_EYE_HEIGHT_METERS,
     getDefaultAbsoluteDepthMutator,
     OutputLink,
     OutputLinkKind,
@@ -356,7 +358,7 @@ function OutputLinkEditor({linkAtom, activeLevel, labelMap, removeLink}: Props) 
                                         <Typography variant="body2">
                                             {mutator.kind === 'scale' ? `Scale (${formatPercent(mutator.scale)}%)`
                                                 : mutator.kind === 'deadZone' ? `Dead Zone (${formatPercent(mutator.level)}%)`
-                                                    : mutator.kind === 'absoluteDepth' ? `Absolute Depth (Full at ${formatMillimeters(mutator.fullPowerDepthMeters)}mm)`
+                                                    : mutator.kind === 'absoluteDepth' ? `Absolute Depth (Full at ${formatPercent(mutator.fullPowerDepthFraction)}% of eye height)`
                                                         : 'Motion-Based'}
                                         </Typography>
                                         <IconButton size="small" color="error" onClick={removeThisMutator}>
@@ -417,23 +419,23 @@ function OutputLinkEditor({linkAtom, activeLevel, labelMap, removeLink}: Props) 
                                             <Typography variant="body2" color="text.secondary">
                                                 Intensity is based on how deep the penetrator is, rather than what percentage
                                                 of the penetrator was inserted. This makes penetrators of different sizes feel
-                                                the same at the same depth.
+                                                the same at the same depth, and makes that depth count relative to your own size.
                                             </Typography>
                                             <Typography variant="body2" color="text.secondary" sx={{mt: 1}}>
-                                                {`Full intensity at depth (${formatMillimeters(mutator.fullPowerDepthMeters)}mm)`}
+                                                {`Full intensity at (${formatPercent(mutator.fullPowerDepthFraction)}% of your eye height)`}
                                             </Typography>
                                             <Slider
-                                                value={formatMillimeters(mutator.fullPowerDepthMeters)}
-                                                min={10}
-                                                max={400}
-                                                step={5}
+                                                value={formatPercent(mutator.fullPowerDepthFraction)}
+                                                min={1}
+                                                max={40}
+                                                step={0.5}
                                                 valueLabelDisplay="auto"
-                                                valueLabelFormat={(value) => `${value}mm`}
+                                                valueLabelFormat={(value) => `${value}% of eye height`}
                                                 onChange={(_e, value) => {
                                                     if (typeof value !== 'number') return;
                                                     commitThisMutator((draft) => {
                                                         if (draft.kind !== 'absoluteDepth') return;
-                                                        draft.fullPowerDepthMeters = value / 1000;
+                                                        draft.fullPowerDepthFraction = value / 100;
                                                     });
                                                 }}
                                             />
@@ -454,6 +456,19 @@ function OutputLinkEditor({linkAtom, activeLevel, labelMap, removeLink}: Props) 
                                                         draft.assumedLengthMeters = value / 1000;
                                                     });
                                                 }}
+                                            />
+                                            <Typography variant="body2" color="text.secondary" sx={{mt: 1}}>
+                                                {`Depth is measured relative to your eye height, so it follows you when you change size. Falls back to ${FALLBACK_EYE_HEIGHT_METERS}m if the parameter below is not received.`}
+                                            </Typography>
+                                            <TextCommitInput
+                                                label="Eye height parameter"
+                                                value={mutator.bodyScaleParameter ?? ''}
+                                                placeholder={DEFAULT_BODY_SCALE_PARAMETER}
+                                                onCommit={next => commitThisMutator((draft) => {
+                                                    if (draft.kind !== 'absoluteDepth') return;
+                                                    const parameter = next.trim();
+                                                    draft.bodyScaleParameter = parameter ? parameter : undefined;
+                                                })}
                                             />
                                         </Box>
                                     )}

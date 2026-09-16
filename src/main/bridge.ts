@@ -5,6 +5,7 @@ import GameDevice from "./GameDevice";
 import {DeviceFeature} from "./Intiface";
 import ConfigService from "./services/ConfigService";
 import {
+    FALLBACK_EYE_HEIGHT_METERS,
     getDefaultLinearActuatorConfig,
     getDefaultOutput,
     Output,
@@ -128,17 +129,38 @@ function getAbsoluteDepthMutator(mutators: OutputLinkMutator[]) {
  * penetrators need proportionally more movement to reach the same intensity.
  *
  * Applying this before the other mutators also means the motion-based mutator measures real
- * speed (in units of fullPowerDepthMeters per second) rather than speed as a fraction of the
+ * speed (as a fraction of eye height per second) rather than speed as a fraction of the
  * penetrator's length.
+ *
+ * eyeHeightMeters is how big the player currently is, and the depth which gives full intensity is
+ * a fraction of it. So the same depth counts for more with a small player and for less with a
+ * giant, and a player who changes size keeps the same feel.
  */
 function toAbsoluteDepth(
     level: number,
     lengthMeters: number | undefined,
     mutator: OutputLinkAbsoluteDepthMutator,
+    eyeHeightMeters: number,
 ): number {
     const length = lengthMeters ?? mutator.assumedLengthMeters;
-    if (!(length > 0) || !(mutator.fullPowerDepthMeters > 0)) return level;
-    return level * length / mutator.fullPowerDepthMeters;
+    const fullPowerDepth = mutator.fullPowerDepthFraction * eyeHeightMeters;
+    if (!(length > 0) || !(fullPowerDepth > 0)) return level;
+    return level * length / fullPowerDepth;
+}
+
+/**
+ * The player's current eye height in meters, which is what the depth threshold is relative to.
+ * Falls back to an average player when the parameter is unset or hasn't arrived from VRChat.
+ */
+function getEyeHeight(
+    entries: Map<string, OscValue>,
+    mutator: OutputLinkAbsoluteDepthMutator,
+): number {
+    const parameter = (mutator.bodyScaleParameter ?? '').trim();
+    if (!parameter) return FALLBACK_EYE_HEIGHT_METERS;
+    const value = entries.get(parameter)?.get();
+    if (typeof value != 'number' || !(value > 0)) return FALLBACK_EYE_HEIGHT_METERS;
+    return value;
 }
 
 export class BridgeOutput {
@@ -236,10 +258,11 @@ export class BridgeOutput {
             let best: LinkOutput = {output: 0, backward: false};
             if (link.kind === 'vrchat.sps.plug' || link.kind === 'vrchat.sps.socket' || link.kind === 'vrchat.sps.touch') {
                 const absoluteDepth = getAbsoluteDepthMutator(link.mutators);
+                const eyeHeight = absoluteDepth ? getEyeHeight(entries, absoluteDepth) : 1;
                 for (const gameDevice of gameDevices) {
                     for (const source of gameDevice.getSources(link)) {
                         const level = absoluteDepth && source.penetration
-                            ? toAbsoluteDepth(source.level, source.penetration.lengthMeters, absoluteDepth)
+                            ? toAbsoluteDepth(source.level, source.penetration.lengthMeters, absoluteDepth, eyeHeight)
                             : source.level;
                         const candidate = applyMutators(`${linkId}/${source.id}`, level, link.mutators);
                         if (candidate.output > best.output) {
