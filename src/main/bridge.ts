@@ -5,7 +5,6 @@ import GameDevice from "./GameDevice";
 import {DeviceFeature} from "./Intiface";
 import ConfigService from "./services/ConfigService";
 import {
-    FALLBACK_EYE_HEIGHT_METERS,
     getDefaultLinearActuatorConfig,
     getDefaultOutput,
     Output,
@@ -14,6 +13,12 @@ import {
 } from "../common/configTypes";
 import clamp from "../common/clamp";
 import {Service} from "typedi";
+
+/** VRChat always provides this parameter, holding the player's current eye height in meters. */
+const EYE_HEIGHT_PARAMETER = 'EyeHeightAsMeters';
+
+/** Only used if the parameter hasn't arrived yet, so we degrade to an average sized player. */
+const FALLBACK_EYE_HEIGHT_METERS = 1.6;
 
 @Service()
 export default class Bridge {
@@ -150,15 +155,10 @@ function toAbsoluteDepth(
 
 /**
  * The player's current eye height in meters, which is what the depth threshold is relative to.
- * Falls back to an average player when the parameter is unset or hasn't arrived from VRChat.
+ * Falls back to an average player if the parameter hasn't arrived from VRChat yet.
  */
-function getEyeHeight(
-    entries: Map<string, OscValue>,
-    mutator: OutputLinkAbsoluteDepthMutator,
-): number {
-    const parameter = (mutator.bodyScaleParameter ?? '').trim();
-    if (!parameter) return FALLBACK_EYE_HEIGHT_METERS;
-    const value = entries.get(parameter)?.get();
+function getEyeHeight(entries: Map<string, OscValue>): number {
+    const value = entries.get(EYE_HEIGHT_PARAMETER)?.get();
     if (typeof value != 'number' || !(value > 0)) return FALLBACK_EYE_HEIGHT_METERS;
     return value;
 }
@@ -258,7 +258,7 @@ export class BridgeOutput {
             let best: LinkOutput = {output: 0, backward: false};
             if (link.kind === 'vrchat.sps.plug' || link.kind === 'vrchat.sps.socket' || link.kind === 'vrchat.sps.touch') {
                 const absoluteDepth = getAbsoluteDepthMutator(link.mutators);
-                const eyeHeight = absoluteDepth ? getEyeHeight(entries, absoluteDepth) : 1;
+                const eyeHeight = absoluteDepth ? getEyeHeight(entries) : 1;
                 for (const gameDevice of gameDevices) {
                     for (const source of gameDevice.getSources(link)) {
                         const level = absoluteDepth && source.penetration

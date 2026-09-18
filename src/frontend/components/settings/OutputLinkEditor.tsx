@@ -13,8 +13,6 @@ import {
     Typography,
 } from '@mui/material';
 import {
-    DEFAULT_BODY_SCALE_PARAMETER,
-    FALLBACK_EYE_HEIGHT_METERS,
     getDefaultAbsoluteDepthMutator,
     OutputLink,
     OutputLinkKind,
@@ -456,19 +454,6 @@ function OutputLinkEditor({linkAtom, activeLevel, labelMap, removeLink}: Props) 
                                                         draft.assumedLengthMeters = value / 1000;
                                                     });
                                                 }}
-                                            />
-                                            <Typography variant="body2" color="text.secondary" sx={{mt: 1}}>
-                                                {`Depth is measured relative to your eye height, so it follows you when you change size. Falls back to ${FALLBACK_EYE_HEIGHT_METERS}m if the parameter below is not received.`}
-                                            </Typography>
-                                            <TextCommitInput
-                                                label="Eye height parameter"
-                                                value={mutator.bodyScaleParameter ?? ''}
-                                                placeholder={DEFAULT_BODY_SCALE_PARAMETER}
-                                                onCommit={next => commitThisMutator((draft) => {
-                                                    if (draft.kind !== 'absoluteDepth') return;
-                                                    const parameter = next.trim();
-                                                    draft.bodyScaleParameter = parameter ? parameter : undefined;
-                                                })}
                                             />
                                         </Box>
                                     )}
